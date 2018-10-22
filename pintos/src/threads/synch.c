@@ -108,6 +108,7 @@ sema_try_down (struct semaphore *sema)
 void
 sema_up (struct semaphore *sema) 
 {
+  //signaling for waking up the thread either after condition satisfy or some other 
   enum intr_level old_level;
 
   ASSERT (sema != NULL);
@@ -118,11 +119,17 @@ sema_up (struct semaphore *sema)
     //                             struct thread, elem));
     {
       ///Change////
+      ///removing the thread with max priority from waitier list i.e unblock it 
+      //and removing list-elem from waiters called also after cond
       struct thread *toWakeUp;
     struct list_elem *max = list_max (&sema->waiters, my_priority_picker, NULL);
     toWakeUp = list_entry (max, struct thread, elem);
     list_remove(max);
     thread_unblock (toWakeUp);
+    //after unblock we again need to schedule because the one which unblocked can be
+    //of higher priority earlier, no need of thread_yield earlier because
+    //earlier unblocked enter at the end of ready queue and will schedule only at 
+    //last this is not case with the priority 
     }
     ///change done////
   sema->value++;
@@ -302,7 +309,7 @@ void cond_wait(struct condition *cond, struct lock *lock)
 {
 	struct semaphore_elem waiter;
 	struct thread *thread_curr = thread_current();
-
+  //All 4 things are defined in cond_signal
 	ASSERT(cond != NULL);
 	ASSERT(lock != NULL);
 	ASSERT(!intr_context());
@@ -311,13 +318,17 @@ void cond_wait(struct condition *cond, struct lock *lock)
 	sema_init(&waiter.semaphore, 0);
 
 	/////changes////////////////
+   //semaphore elem representing thread and this holds its priority
 		waiter.priority = thread_curr->priority;
 //////changes done/////////////////
 		list_push_back(&cond->waiters, &waiter.elem);
+    //pushing semaphore_elem as all thread waiting on that condition
 	lock_release(lock);
+  //release lock as it will now wait
 	sema_down(&waiter.semaphore);
+  //sema_down is for waiting 
 	lock_acquire(lock);
-
+  //again aquire lock once return from wait
 }
 
 /* If any threads are waiting on COND (protected by LOCK), then
@@ -329,13 +340,18 @@ void cond_wait(struct condition *cond, struct lock *lock)
 void cond_signal(struct condition *cond, struct lock *lock UNUSED)
 {
 	ASSERT(cond != NULL);
+  //ensuring that condition exist
 	ASSERT(lock != NULL);
+  //ensuring that lock there
 	ASSERT(!intr_context());
+  //ensuring no external maskable -interrupt occur
 	ASSERT(lock_held_by_current_thread(lock));
-
+  //ensure someone holds the lock
 	if (!list_empty(&cond->waiters))
 	{
     ///changes//////
+    //just sorting the list based on priority before poping the front with max-priority
+    //and waking that up
 		list_sort(&cond->waiters, sema_priority_less_helper, NULL);
 		////changes done/////
     sema_up(&list_entry (list_pop_front (&cond->waiters),
@@ -361,7 +377,7 @@ void cond_broadcast(struct condition *cond, struct lock *lock)
 bool sema_priority_less_helper(const struct list_elem *a,
 		const struct list_elem *b, void *aux)
 {
-	
+//getting maximum priority semaphore	
 	ASSERT(a != NULL && b!=NULL);
 	struct semaphore_elem *a_t = list_entry(a, struct semaphore_elem, elem);
 	struct semaphore_elem *b_t = list_entry(b, struct semaphore_elem, elem);
