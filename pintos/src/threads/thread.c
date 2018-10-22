@@ -123,6 +123,21 @@ thread_init (void)
 
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
+
+/****************CHANGES***************************************/
+//this format standard because in list it is defined structure of compare function
+bool my_priority_picker(const struct list_elem *a, const struct list_elem *b, void *aux) {
+    struct thread *ta = list_entry(a, struct thread, elem) ;
+    //type of a belong to which list
+    int priority_a, priority_b;
+    priority_a = ta-> priority;
+    struct thread *tb = list_entry(b, struct thread, elem) ;
+    //returning address of thread to which a belong...also used in blocked state list
+    priority_b = tb-> priority;
+    return priority_b > priority_a;
+    ///sorting or returning true ensuring decreasing order//
+}
+/**********************Changes Done**********************************/
 void
 thread_start (void) 
 {
@@ -229,7 +244,16 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+  /**********changes********************************************/
+  int curr_running_priority = thread_current()->priority;
+  //if current running thread priority less than this created thread priority than u need to
+  //schedule again doing status of this thread ready in thread_yield therefore calling thread_yield not 
+  //directly schedule
+  if(curr_running_priority < priority) 
+  {
+      thread_yield();
+  }
+/*changes done*************************************************/
   return tid;
 }
 
@@ -364,7 +388,21 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  /*******************changes**********************************/
+  ///saving old priority because if new priority > old priority we need to go as we are going
+  ///if old priority > new_priority we need to get current max priority thread from ready list
+  ///and than need to get address of thread corresponding to that list-elem  and if 
+  ///that elem have priority > new priority need to schedule again else continue 
+   int old_priority = thread_current()->priority;
   thread_current ()->priority = new_priority;
+  if(old_priority > new_priority)
+   {
+      struct list_elem *max = list_max (&ready_list, my_priority_picker, NULL );
+      struct thread *t = list_entry (max, struct thread, elem);
+      if(t->priority > new_priority)
+          thread_yield();
+  }
+  /**********************changes*********************************/
 }
 
 /* Returns the current thread's priority. */
@@ -519,10 +557,24 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
+  // if (list_empty (&ready_list))
+  //   return idle_thread;
+  // else
+  //   return list_entry (list_pop_front (&ready_list), struct thread, elem);
+/***********************changes*****************************************/
+   if (list_empty (&ready_list))
     return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  else {
+    //picking up the thread of max_priority from ready list and getting base address
+    //of thread corresponding to that list elem of ready list and than removing that
+    //element from list and returning it to schedule
+    struct thread *toReturn;
+    struct list_elem *max = list_max (&ready_list, my_priority_picker, NULL);
+    toReturn = list_entry (max, struct thread, elem);
+    list_remove(max);
+    return toReturn;
+  }
+  /***************************changes done*******************************/
 }
 
 /* Completes a thread switch by activating the new thread's page
